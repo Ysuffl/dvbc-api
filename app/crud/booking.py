@@ -60,13 +60,12 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     )
     db.add(db_booking)
     
-    # Set table to BOOKED if booking starts now
-    now = datetime.now()
-    if db_booking.start_time <= now <= db_booking.end_time:
-        db_table.status = TableStatus.BOOKED
-        db.add(db_table)
+    # Always set table to BOOKED when a booking is created
+    # (regardless of whether the booking time is now or in the future)
+    db_table.status = TableStatus.BOOKED
+    db.add(db_table)
     
-    await db.flush()
+    await db.commit()
     await db.refresh(db_booking)
     if db_table:
         await db.refresh(db_table)
@@ -171,10 +170,9 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         )
         db.add(db_booking)
         
-        # Set table to BOOKED if booking starts now
-        if db_booking.start_time <= now <= db_booking.end_time:
-            db_table.status = TableStatus.BOOKED
-            db.add(db_table)
+        # Always set table to BOOKED when an event booking is created
+        db_table.status = TableStatus.BOOKED
+        db.add(db_table)
         
         bookings.append(db_booking)
 
