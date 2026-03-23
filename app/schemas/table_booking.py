@@ -22,6 +22,13 @@ class CustomerCategory(str, enum.Enum):
     REGULER = "reguler"
     EVENT = "event"
     PRIORITAS = "prioritas"
+    BIG_SPENDER = "big_spender"
+    DRINKER = "drinker"
+    PARTY = "party"
+    DINNER = "dinner"
+    LUNCH = "lunch"
+    FAMILY = "family"
+    YOUNGSTER = "youngster"
 
 # Table Schemas
 class TableBase(BaseModel):
@@ -42,6 +49,9 @@ class TableUpdate(BaseModel):
     shape: Optional[str] = None
     status: Optional[TableStatus] = None
     area_id: Optional[str] = None
+
+class TableBilled(BaseModel):
+    billed_price: Optional[float] = None
 
 # Customer Schemas
 class CustomerBase(BaseModel):
@@ -65,6 +75,7 @@ class BookingBase(BaseModel):
     start_time: datetime
     end_time: datetime
     billed_at: Optional[datetime] = None
+    billed_price: Optional[float] = None
     status: BookingStatus = BookingStatus.PENDING
     notes: Optional[str] = None
     cancel_reason: Optional[str] = None
@@ -93,6 +104,7 @@ class EventBookingCreate(BaseModel):
 class BookingUpdate(BaseModel):
     status: Optional[BookingStatus] = None
     billed_at: Optional[datetime] = None
+    billed_price: Optional[float] = None
     cancel_reason: Optional[str] = None
 
 class BookingResponse(BaseModel):
@@ -103,6 +115,7 @@ class BookingResponse(BaseModel):
     start_time: datetime
     end_time: datetime
     billed_at: Optional[datetime] = None
+    billed_price: Optional[float] = None
     status: BookingStatus
     notes: Optional[str] = None
     cancel_reason: Optional[str] = None

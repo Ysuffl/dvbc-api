@@ -61,7 +61,7 @@ async def update_booking_status_route(booking_id: int, booking_update: BookingUp
     table_id = db_booking_initial.table_id
     
     # Perform status update (and potential deletion)
-    db_booking = await update_booking_status(db, booking_id, booking_update.status, booking_update.cancel_reason)
+    db_booking = await update_booking_status(db, booking_id, booking_update.status, booking_update.cancel_reason, booking_update.billed_price)
     
     # Handle the table status broadcast even if booking is gone
     db_table = await get_table_by_id(db, table_id)

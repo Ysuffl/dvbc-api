@@ -128,8 +128,12 @@ async def mark_table_as_available(table_id: int, db: AsyncSession = Depends(get_
     })
     return db_table
 
+from app.schemas.table_booking import TableCreate, TableUpdate, TableResponse, TableBilled
+
+# ... (keep other parts)
+
 @router.patch("/{table_id}/billed", response_model=TableResponse)
-async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks, billed_in: TableBilled, db: AsyncSession = Depends(get_db)):
     db_table = await get_table_by_id(db, table_id)
     if not db_table:
         raise HTTPException(status_code=404, detail="Table not found")
@@ -140,11 +144,14 @@ async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks,
     
     # Update active booking status to billed
     now = datetime.now()
-    find_booking_query = select(Booking).where(Booking.table_id == table_id, Booking.start_time <= now, Booking.end_time >= now, Booking.status == BookingStatus.CONFIRMED)
+    find_booking_query = select(Booking).where(Booking.table_id == table_id, Booking.status == BookingStatus.CONFIRMED)
     booking_result = await db.execute(find_booking_query)
     db_booking = booking_result.scalar_one_or_none()
     if db_booking:
         db_booking.status = BookingStatus.BILLED
+        db_booking.billed_at = now
+        if billed_in.billed_price:
+            db_booking.billed_price = billed_in.billed_price
         db.add(db_booking)
         
     await db.commit()

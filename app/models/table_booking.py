@@ -23,6 +23,13 @@ class CustomerCategory(str, enum.Enum):
     REGULER = "reguler"
     EVENT = "event"
     PRIORITAS = "prioritas"
+    BIG_SPENDER = "big_spender"
+    DRINKER = "drinker"
+    PARTY = "party"
+    DINNER = "dinner"
+    LUNCH = "lunch"
+    FAMILY = "family"
+    YOUNGSTER = "youngster"
 
 class Customer(Base):
     __tablename__ = "customers"
@@ -60,6 +67,7 @@ class Booking(Base):
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
     billed_at = Column(DateTime, nullable=True)
+    billed_price = Column(Float, nullable=True)
     status = Column(Enum(BookingStatus), default=BookingStatus.PENDING)
     notes = Column(String, nullable=True)         # booking description/keterangan
     cancel_reason = Column(String, nullable=True)  # reason when cancelled

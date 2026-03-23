@@ -77,7 +77,7 @@ async def get_booking_by_id(db: AsyncSession, booking_id: int) -> Optional[Booki
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
-async def update_booking_status(db: AsyncSession, booking_id: int, status: BookingStatus, cancel_reason: Optional[str] = None) -> Optional[Booking]:
+async def update_booking_status(db: AsyncSession, booking_id: int, status: BookingStatus, cancel_reason: Optional[str] = None, billed_price: Optional[float] = None) -> Optional[Booking]:
     db_booking = await get_booking_by_id(db, booking_id)
     if not db_booking:
         return None
@@ -85,6 +85,11 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     db_booking.status = status
     if cancel_reason is not None:
         db_booking.cancel_reason = cancel_reason
+    
+    if status == BookingStatus.BILLED:
+        db_booking.billed_at = datetime.now()
+        if billed_price is not None:
+            db_booking.billed_price = billed_price
     
     # Update Customer History
     cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
