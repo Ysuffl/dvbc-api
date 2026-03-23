@@ -92,7 +92,7 @@ async def mark_table_as_occupied(table_id: int, db: AsyncSession = Depends(get_d
         db_booking.status = BookingStatus.CONFIRMED
         db.add(db_booking)
     
-    await db.flush()
+    await db.commit()
     await db.refresh(db_table)
     
     await manager.broadcast({
@@ -119,7 +119,7 @@ async def mark_table_as_available(table_id: int, db: AsyncSession = Depends(get_
         db_booking.status = BookingStatus.COMPLETED
         db.add(db_booking)
         
-    await db.flush()
+    await db.commit()
     await db.refresh(db_table)
     
     await manager.broadcast({
@@ -147,7 +147,7 @@ async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks,
         db_booking.status = BookingStatus.BILLED
         db.add(db_booking)
         
-    await db.flush()
+    await db.commit()
     await db.refresh(db_table)
 
     # Menjadwalkan reset setelah 5 menit

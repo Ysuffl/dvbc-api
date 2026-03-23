@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, delete
+from sqlalchemy.orm import selectinload
 from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer
 from app.schemas.table_booking import BookingCreate, BookingUpdate
 from typing import List, Optional
@@ -104,7 +105,7 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
             db_table.status = TableStatus.AVAILABLE
             db.add(db_table)
         await db.delete(db_booking)
-        await db.flush()
+        await db.commit()
         return None # Booking is gone
     
     elif status == BookingStatus.CONFIRMED:
@@ -119,7 +120,7 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
 
     db.add(db_booking)
 
-    await db.flush()
+    await db.commit()
     await db.refresh(db_booking)
     return db_booking
 
@@ -177,6 +178,8 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         bookings.append(db_booking)
 
     await db.commit() # Bulk commit for performance
-    for b in bookings:
-        await db.refresh(b)
-    return bookings
+    
+    # Reload all bookings with their customer relationship to prevent MissingGreenlet in async Pydantic serialization
+    stmt = select(Booking).options(selectinload(Booking.customer)).where(Booking.id.in_([b.id for b in bookings]))
+    result = await db.execute(stmt)
+    return list(result.scalars().all())

@@ -23,7 +23,7 @@ async def get_table_by_id(db: AsyncSession, table_id: int) -> Optional[Table]:
 async def create_table(db: AsyncSession, table_in: TableCreate) -> Table:
     db_table = Table(**table_in.model_dump())
     db.add(db_table)
-    await db.flush()
+    await db.commit()
     await db.refresh(db_table)
     return db_table
 
@@ -37,7 +37,7 @@ async def update_table(db: AsyncSession, table_id: int, table_in: TableUpdate) -
         setattr(db_table, key, value)
     
     db.add(db_table)
-    await db.flush()
+    await db.commit()
     await db.refresh(db_table)
     return db_table
 
@@ -46,5 +46,5 @@ async def delete_table(db: AsyncSession, table_id: int) -> bool:
     if not db_table:
         return False
     await db.delete(db_table)
-    await db.flush()
+    await db.commit()
     return True
