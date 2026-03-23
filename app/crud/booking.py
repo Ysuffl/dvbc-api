@@ -177,9 +177,11 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         
         bookings.append(db_booking)
 
+    await db.flush()
+    booking_ids = [b.id for b in bookings]
     await db.commit() # Bulk commit for performance
     
     # Reload all bookings with their customer relationship to prevent MissingGreenlet in async Pydantic serialization
-    stmt = select(Booking).options(selectinload(Booking.customer)).where(Booking.id.in_([b.id for b in bookings]))
+    stmt = select(Booking).options(selectinload(Booking.customer)).where(Booking.id.in_(booking_ids))
     result = await db.execute(stmt)
     return list(result.scalars().all())

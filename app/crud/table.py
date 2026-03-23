@@ -6,12 +6,12 @@ from app.models.table_booking import Table, TableStatus, Booking
 from app.schemas.table_booking import TableCreate, TableUpdate
 from typing import List, Optional
 
-async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Table]:
+async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 1000) -> List[Table]:
     query = select(Table).options(
         selectinload(Table.bookings).selectinload(Booking.customer)
-    ).offset(skip).limit(limit)
+    ).order_by(Table.id).offset(skip).limit(limit)
     result = await db.execute(query)
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 async def get_table_by_id(db: AsyncSession, table_id: int) -> Optional[Table]:
     query = select(Table).options(
