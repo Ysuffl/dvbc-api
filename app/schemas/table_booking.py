@@ -58,9 +58,12 @@ class CustomerBase(BaseModel):
     name: str
     phone: Optional[str] = None
     category: CustomerCategory = CustomerCategory.REGULER
+    age: Optional[int] = None
 
 class CustomerResponse(CustomerBase):
     id: int
+    total_spending: float = 0.0
+    master_level: str = "Bronze"
     last_status: Optional[BookingStatus] = None
     last_visit: Optional[datetime] = None
     created_at: datetime
@@ -82,9 +85,10 @@ class BookingBase(BaseModel):
 
 class BookingCreate(BaseModel):
     table_id: int
-    customer_name: str # Still pass name/phone to help auto-lookup/create
+    customer_name: str
     customer_category: CustomerCategory = CustomerCategory.REGULER
     phone: Optional[str] = None
+    age: Optional[int] = None
     pax: int
     start_time: datetime
     end_time: datetime
@@ -95,6 +99,7 @@ class EventBookingCreate(BaseModel):
     customer_name: str
     customer_category: CustomerCategory = CustomerCategory.EVENT
     phone: Optional[str] = None
+    age: Optional[int] = None
     pax: int
     start_time: datetime
     end_time: datetime

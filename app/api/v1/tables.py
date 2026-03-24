@@ -93,7 +93,7 @@ async def mark_table_as_occupied(table_id: int, db: AsyncSession = Depends(get_d
         db.add(db_booking)
     
     await db.commit()
-    await db.refresh(db_table)
+    db_table = await get_table_by_id(db, table_id)
     
     await manager.broadcast({
         "type": "table_update",
@@ -120,7 +120,7 @@ async def mark_table_as_available(table_id: int, db: AsyncSession = Depends(get_
         db.add(db_booking)
         
     await db.commit()
-    await db.refresh(db_table)
+    db_table = await get_table_by_id(db, table_id)
     
     await manager.broadcast({
         "type": "table_update",
@@ -155,7 +155,8 @@ async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks,
         db.add(db_booking)
         
     await db.commit()
-    await db.refresh(db_table)
+    # Fetch fresh with relations for broadcast and response
+    db_table = await get_table_by_id(db, table_id)
 
     # Menjadwalkan reset setelah 5 menit
     background_tasks.add_task(reset_table_status_task, table_id)

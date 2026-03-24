@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, delete
 from sqlalchemy.orm import selectinload
-from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer
+from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer, compute_master_level
 from app.schemas.table_booking import BookingCreate, BookingUpdate
 from typing import List, Optional
 from datetime import datetime
@@ -22,7 +22,6 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
         return None
 
     # Check for overlapping bookings
-    # Overlap logic: (start1 < end2) and (end1 > start2)
     overlap_query = select(Booking).where(
         Booking.table_id == booking_in.table_id,
         Booking.status != BookingStatus.CANCELLED,
@@ -31,7 +30,6 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     )
     overlap_result = await db.execute(overlap_query)
     if overlap_result.scalars().first():
-        # Conflict found
         return None
 
     # Upsert Customer: find existing by name+phone or create new
@@ -46,9 +44,15 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             name=booking_in.customer_name,
             phone=booking_in.phone,
             category=booking_in.customer_category,
+            age=booking_in.age,
         )
         db.add(db_customer)
         await db.flush()
+    else:
+        # Update age if provided and not yet set
+        if booking_in.age is not None and db_customer.age is None:
+            db_customer.age = booking_in.age
+            db.add(db_customer)
 
     db_booking = Booking(
         table_id=booking_in.table_id,
@@ -61,8 +65,6 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     )
     db.add(db_booking)
     
-    # Always set table to BOOKED when a booking is created
-    # (regardless of whether the booking time is now or in the future)
     db_table.status = TableStatus.BOOKED
     db.add(db_table)
     
@@ -87,11 +89,24 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
         db_booking.cancel_reason = cancel_reason
     
     if status == BookingStatus.BILLED:
-        db_booking.billed_at = datetime.now()
+        now = datetime.now()
+        db_booking.billed_at = now
         if billed_price is not None:
             db_booking.billed_price = billed_price
+        
+        # Update Customer total_spending + master_level
+        if billed_price and db_booking.customer_id:
+            cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
+            cust_result = await db.execute(cust_query)
+            db_customer = cust_result.scalar_one_or_none()
+            if db_customer:
+                db_customer.total_spending = (db_customer.total_spending or 0.0) + billed_price
+                db_customer.master_level = compute_master_level(db_customer.total_spending)
+                db_customer.last_status = status
+                db_customer.last_visit = now
+                db.add(db_customer)
     
-    # Update Customer History
+    # Update Customer History (for non-billed statuses)
     cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
     cust_result = await db.execute(cust_query)
     db_customer = cust_result.scalar_one_or_none()
@@ -104,14 +119,14 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     table_result = await db.execute(table_query)
     db_table = table_result.scalar_one_or_none()
 
-    # If booking is cancelled or completed, set table back to AVAILABLE and DELETE booking
     if status in [BookingStatus.CANCELLED, BookingStatus.COMPLETED]:
         if db_table:
             db_table.status = TableStatus.AVAILABLE
             db.add(db_table)
-        await db.delete(db_booking)
+        db.add(db_booking)
         await db.commit()
-        return None # Booking is gone
+        await db.refresh(db_booking)
+        return db_booking
     
     elif status == BookingStatus.CONFIRMED:
         if db_table:
@@ -148,15 +163,19 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
             name=booking_in.customer_name,
             phone=booking_in.phone,
             category=booking_in.customer_category,
+            age=booking_in.age,
         )
         db.add(db_customer)
         await db.flush()
+    else:
+        if booking_in.age is not None and db_customer.age is None:
+            db_customer.age = booking_in.age
+            db.add(db_customer)
 
     bookings = []
     now = datetime.now()
     
     for table_id in booking_in.table_ids:
-        # Check if table exists
         table_query = select(Table).where(Table.id == table_id)
         table_result = await db.execute(table_query)
         db_table = table_result.scalar_one_or_none()
@@ -164,7 +183,6 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         if not db_table:
             continue
 
-        # Create booking for this table
         db_booking = Booking(
             table_id=table_id,
             customer_id=db_customer.id,
@@ -176,7 +194,6 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         )
         db.add(db_booking)
         
-        # Always set table to BOOKED when an event booking is created
         db_table.status = TableStatus.BOOKED
         db.add(db_table)
         
@@ -184,9 +201,8 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
 
     await db.flush()
     booking_ids = [b.id for b in bookings]
-    await db.commit() # Bulk commit for performance
+    await db.commit()
     
-    # Reload all bookings with their customer relationship to prevent MissingGreenlet in async Pydantic serialization
     stmt = select(Booking).options(selectinload(Booking.customer)).where(Booking.id.in_(booking_ids))
     result = await db.execute(stmt)
     return list(result.scalars().all())

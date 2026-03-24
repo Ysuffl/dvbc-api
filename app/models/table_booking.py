@@ -31,6 +31,15 @@ class CustomerCategory(str, enum.Enum):
     FAMILY = "family"
     YOUNGSTER = "youngster"
 
+def compute_master_level(total_spending: float) -> str:
+    if total_spending >= 20_000_000:
+        return "Platinum"
+    elif total_spending >= 5_000_000:
+        return "Gold"
+    elif total_spending >= 1_000_000:
+        return "Silver"
+    return "Bronze"
+
 class Customer(Base):
     __tablename__ = "customers"
 
@@ -38,6 +47,9 @@ class Customer(Base):
     name = Column(String, nullable=False)
     phone = Column(String, nullable=True)
     category = Column(Enum(CustomerCategory), default=CustomerCategory.REGULER)
+    age = Column(Integer, nullable=True)
+    total_spending = Column(Float, default=0.0)
+    master_level = Column(String(20), default="Bronze")
     created_at = Column(DateTime, default=datetime.now)
 
     bookings = relationship("Booking", back_populates="customer")
@@ -69,8 +81,8 @@ class Booking(Base):
     billed_at = Column(DateTime, nullable=True)
     billed_price = Column(Float, nullable=True)
     status = Column(Enum(BookingStatus), default=BookingStatus.PENDING)
-    notes = Column(String, nullable=True)         # booking description/keterangan
-    cancel_reason = Column(String, nullable=True)  # reason when cancelled
+    notes = Column(String, nullable=True)
+    cancel_reason = Column(String, nullable=True)
 
     table = relationship("Table", back_populates="bookings")
     customer = relationship("Customer", back_populates="bookings")
