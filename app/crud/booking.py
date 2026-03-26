@@ -94,26 +94,19 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
         if billed_price is not None:
             db_booking.billed_price = billed_price
         
-        # Update Customer total_spending + master_level
-        if billed_price and db_booking.customer_id:
-            cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
-            cust_result = await db.execute(cust_query)
-            db_customer = cust_result.scalar_one_or_none()
-            if db_customer:
+    if db_booking.customer_id:
+        cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
+        cust_result = await db.execute(cust_query)
+        db_customer = cust_result.scalar_one_or_none()
+        
+        if db_customer:
+            if status == BookingStatus.BILLED and billed_price is not None:
                 db_customer.total_spending = (db_customer.total_spending or 0.0) + billed_price
                 db_customer.master_level = compute_master_level(db_customer.total_spending)
-                db_customer.last_status = status
-                db_customer.last_visit = now
-                db.add(db_customer)
-    
-    # Update Customer History (for non-billed statuses)
-    cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
-    cust_result = await db.execute(cust_query)
-    db_customer = cust_result.scalar_one_or_none()
-    if db_customer:
-        db_customer.last_status = status
-        db_customer.last_visit = datetime.now()
-        db.add(db_customer)
+            
+            db_customer.last_status = status
+            db_customer.last_visit = datetime.now()
+            db.add(db_customer)
 
     table_query = select(Table).where(Table.id == db_booking.table_id)
     table_result = await db.execute(table_query)

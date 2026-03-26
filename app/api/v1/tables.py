@@ -148,11 +148,8 @@ async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks,
     booking_result = await db.execute(find_booking_query)
     db_booking = booking_result.scalar_one_or_none()
     if db_booking:
-        db_booking.status = BookingStatus.BILLED
-        db_booking.billed_at = now
-        if billed_in.billed_price:
-            db_booking.billed_price = billed_in.billed_price
-        db.add(db_booking)
+        from app.crud.booking import update_booking_status
+        await update_booking_status(db, db_booking.id, BookingStatus.BILLED, None, billed_in.billed_price)
         
     await db.commit()
     # Fetch fresh with relations for broadcast and response

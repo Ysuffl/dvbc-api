@@ -32,9 +32,9 @@ class CustomerCategory(str, enum.Enum):
     YOUNGSTER = "youngster"
 
 def compute_master_level(total_spending: float) -> str:
-    if total_spending >= 20_000_000:
+    if total_spending >= 7_000_000:
         return "Platinum"
-    elif total_spending >= 5_000_000:
+    elif total_spending >= 3_000_000:
         return "Gold"
     elif total_spending >= 1_000_000:
         return "Silver"
