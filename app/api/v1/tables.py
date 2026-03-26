@@ -12,23 +12,9 @@ from datetime import datetime
 
 router = APIRouter()
 
+# DEPRECATED reset task as logic moved to immediate AVAILABLE on billed
 async def reset_table_status_task(table_id: int):
-    """Fungsi ini berjalan di background, menunggu 5 menit sebelum reset table ke available"""
-    await asyncio.sleep(5 * 60) # 5 menit
-    async with SessionLocal() as db:
-        db_table = await get_table_by_id(db, table_id)
-        # Hanya reset jika statusnya masih BILLED
-        if db_table and db_table.status == TableStatus.BILLED:
-            db_table.status = TableStatus.AVAILABLE
-            db.add(db_table)
-            await db.commit()
-            await db.refresh(db_table)
-            
-            # Broadcast the change
-            await manager.broadcast({
-                "type": "table_update",
-                "data": TableResponse.model_validate(db_table).model_dump(mode="json")
-            })
+    pass
 
 @router.get("/", response_model=List[TableResponse])
 async def list_tables(db: AsyncSession = Depends(get_db)):
@@ -87,9 +73,9 @@ async def mark_table_as_occupied(table_id: int, db: AsyncSession = Depends(get_d
     now = datetime.now()
     find_booking_query = select(Booking).where(Booking.table_id == table_id, Booking.start_time <= now, Booking.end_time >= now, Booking.status != BookingStatus.CANCELLED)
     booking_result = await db.execute(find_booking_query)
-    db_booking = booking_result.scalar_one_or_none()
+    db_booking = booking_result.unique().scalar_one_or_none()
     if db_booking:
-        db_booking.status = BookingStatus.CONFIRMED
+        db_booking.status = BookingStatus.ARRIVED
         db.add(db_booking)
     
     await db.commit()
@@ -108,13 +94,18 @@ async def mark_table_as_available(table_id: int, db: AsyncSession = Depends(get_
         raise HTTPException(status_code=404, detail="Table not found")
     
     db_table.status = TableStatus.AVAILABLE
+    db_table.hold_until = None
+    db_table.hold_by_customer_id = None
     db.add(db_table)
     
     # Update active or recently active booking status to completed
     now = datetime.now()
-    find_booking_query = select(Booking).where(Booking.table_id == table_id, Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.BILLED]))
+    find_booking_query = select(Booking).where(
+        Booking.table_id == table_id, 
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ARRIVED, BookingStatus.BILLED])
+    )
     booking_result = await db.execute(find_booking_query)
-    db_booking = booking_result.scalar_one_or_none()
+    db_booking = booking_result.unique().scalar_one_or_none()
     if db_booking:
         db_booking.status = BookingStatus.COMPLETED
         db.add(db_booking)
@@ -133,32 +124,45 @@ from app.schemas.table_booking import TableCreate, TableUpdate, TableResponse, T
 # ... (keep other parts)
 
 @router.patch("/{table_id}/billed", response_model=TableResponse)
-async def mark_table_as_billed(table_id: int, background_tasks: BackgroundTasks, billed_in: TableBilled, db: AsyncSession = Depends(get_db)):
+async def mark_table_as_billed(table_id: int, billed_in: TableBilled, db: AsyncSession = Depends(get_db)):
     db_table = await get_table_by_id(db, table_id)
     if not db_table:
         raise HTTPException(status_code=404, detail="Table not found")
     
-    # Update status to BILLED
-    db_table.status = TableStatus.BILLED
-    db.add(db_table)
-    
-    # Update active booking status to billed
-    now = datetime.now()
-    find_booking_query = select(Booking).where(Booking.table_id == table_id, Booking.status == BookingStatus.CONFIRMED)
+    # Update active booking status
+    find_booking_query = select(Booking).where(
+        Booking.table_id == table_id, 
+        Booking.status == BookingStatus.ARRIVED
+    )
     booking_result = await db.execute(find_booking_query)
-    db_booking = booking_result.scalar_one_or_none()
+    db_booking = booking_result.unique().scalar_one_or_none()
     if db_booking:
         from app.crud.booking import update_booking_status
         await update_booking_status(db, db_booking.id, BookingStatus.BILLED, None, billed_in.billed_price)
-        
+    
+    # Set table status to AVAILABLE immediately
+    db_table.status = TableStatus.AVAILABLE
+    db_table.hold_until = None
+    db_table.hold_by_customer_id = None
+    db.add(db_table)
     await db.commit()
-    # Fetch fresh with relations for broadcast and response
+    
     db_table = await get_table_by_id(db, table_id)
+    await manager.broadcast({
+        "type": "table_update",
+        "data": TableResponse.model_validate(db_table).model_dump(mode="json")
+    })
+    return db_table
 
-    # Menjadwalkan reset setelah 5 menit
-    background_tasks.add_task(reset_table_status_task, table_id)
+from typing import Optional
 
-    # Broadcast update
+@router.patch("/{table_id}/hold", response_model=TableResponse)
+async def hold_table_route(table_id: int, customer_name: str, phone: Optional[str] = None, hold_until: Optional[datetime] = None, db: AsyncSession = Depends(get_db)):
+    from app.crud.table import hold_table
+    db_table = await hold_table(db, table_id, customer_name, phone, hold_until)
+    if not db_table:
+        raise HTTPException(status_code=404, detail="Table not found")
+        
     await manager.broadcast({
         "type": "table_update",
         "data": TableResponse.model_validate(db_table).model_dump(mode="json")

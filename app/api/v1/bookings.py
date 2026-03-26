@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Union
 from app.db.session import get_db
-from app.crud.booking import get_bookings, create_booking, get_booking_by_id, update_booking_status, create_event_bookings
+from app.crud.booking import get_bookings, create_booking, get_booking_by_id, update_booking_status, create_event_bookings, get_master_tags
 from app.crud.table import get_table_by_id
-from app.schemas.table_booking import BookingCreate, BookingUpdate, BookingResponse, TableResponse, EventBookingCreate, BookingStatus
+from app.schemas.table_booking import (
+    BookingCreate, BookingUpdate, BookingResponse, TableResponse, 
+    EventBookingCreate, BookingStatus, TagResponse
+)
 from app.services.websocket_manager import manager
 
 router = APIRouter()
@@ -27,6 +30,10 @@ async def create_event_booking_route(booking_in: EventBookingCreate, db: AsyncSe
 @router.get("/", response_model=List[BookingResponse])
 async def list_bookings(db: AsyncSession = Depends(get_db)):
     return await get_bookings(db)
+
+@router.get("/tags", response_model=List[TagResponse])
+async def list_tags(db: AsyncSession = Depends(get_db)):
+    return await get_master_tags(db)
 
 @router.post("/", response_model=BookingResponse)
 async def create_new_booking(booking_in: BookingCreate, db: AsyncSession = Depends(get_db)):

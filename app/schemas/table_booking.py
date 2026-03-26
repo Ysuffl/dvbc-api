@@ -9,6 +9,7 @@ class TableStatus(str, enum.Enum):
     OCCUPIED = "occupied"
     BILLED = "billed"
     OUT_OF_SERVICE = "out_of_service"
+    HOLD = "hold"
 
 class BookingStatus(str, enum.Enum):
     PENDING = "pending"
@@ -30,6 +31,10 @@ class CustomerCategory(str, enum.Enum):
     FAMILY = "family"
     YOUNGSTER = "youngster"
 
+class Gender(str, enum.Enum):
+    MALE = "Laki-laki"
+    FEMALE = "Perempuan"
+
 # Table Schemas
 class TableBase(BaseModel):
     code: str
@@ -38,6 +43,9 @@ class TableBase(BaseModel):
     shape: str
     status: TableStatus = TableStatus.AVAILABLE
     area_id: str
+    hold_until: Optional[datetime] = None
+    hold_by_customer_id: Optional[int] = None
+    hold_customer: Optional[CustomerResponse] = None
 
 class TableCreate(TableBase):
     pass
@@ -49,9 +57,27 @@ class TableUpdate(BaseModel):
     shape: Optional[str] = None
     status: Optional[TableStatus] = None
     area_id: Optional[str] = None
+    hold_until: Optional[datetime] = None
+    hold_by_customer_id: Optional[int] = None
 
 class TableBilled(BaseModel):
     billed_price: Optional[float] = None
+# Master Level Schemas
+class MasterLevelResponse(BaseModel):
+    id: int
+    name: str
+    min_spending: float
+    badge_color: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# Tag Schemas
+class TagResponse(BaseModel):
+    id: int
+    group_name: str
+    name: str
+    
+    model_config = ConfigDict(from_attributes=True)
 
 # Customer Schemas
 class CustomerBase(BaseModel):
@@ -59,11 +85,13 @@ class CustomerBase(BaseModel):
     phone: Optional[str] = None
     category: CustomerCategory = CustomerCategory.REGULER
     age: Optional[int] = None
+    gender: Optional[Gender] = None
 
 class CustomerResponse(CustomerBase):
     id: int
     total_spending: float = 0.0
-    master_level: str = "Bronze"
+    master_level_id: int = 1
+    master_level: Optional[MasterLevelResponse] = None
     last_status: Optional[BookingStatus] = None
     last_visit: Optional[datetime] = None
     created_at: datetime
@@ -89,10 +117,12 @@ class BookingCreate(BaseModel):
     customer_category: CustomerCategory = CustomerCategory.REGULER
     phone: Optional[str] = None
     age: Optional[int] = None
+    gender: Optional[Gender] = None
     pax: int
     start_time: datetime
     end_time: datetime
     notes: Optional[str] = None
+    tag_ids: Optional[List[int]] = []
 
 class EventBookingCreate(BaseModel):
     table_ids: List[int]
@@ -100,11 +130,13 @@ class EventBookingCreate(BaseModel):
     customer_category: CustomerCategory = CustomerCategory.EVENT
     phone: Optional[str] = None
     age: Optional[int] = None
+    gender: Optional[Gender] = None
     pax: int
     start_time: datetime
     end_time: datetime
     notes: Optional[str] = None
     area_name: Optional[str] = None
+    tag_ids: Optional[List[int]] = []
 
 class BookingUpdate(BaseModel):
     status: Optional[BookingStatus] = None
@@ -124,6 +156,7 @@ class BookingResponse(BaseModel):
     status: BookingStatus
     notes: Optional[str] = None
     cancel_reason: Optional[str] = None
+    tags: List[TagResponse] = []
     
     # Nested customer for convenience
     customer: Optional[CustomerResponse] = None

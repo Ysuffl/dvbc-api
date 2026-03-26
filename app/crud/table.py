@@ -2,20 +2,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import update, delete
-from app.models.table_booking import Table, TableStatus, Booking
+from app.models.table_booking import Table, TableStatus, Booking, Customer
+from datetime import datetime, timedelta
 from app.schemas.table_booking import TableCreate, TableUpdate
 from typing import List, Optional
 
 async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 1000) -> List[Table]:
     query = select(Table).options(
-        selectinload(Table.bookings).selectinload(Booking.customer)
+        selectinload(Table.bookings).selectinload(Booking.customer),
+        selectinload(Table.hold_customer)
     ).order_by(Table.id).offset(skip).limit(limit)
     result = await db.execute(query)
-    return list(result.scalars().all())
+    tables = list(result.scalars().all())
+    
+    now = datetime.now()
+    updated = False
+    for table in tables:
+        if table.status == TableStatus.HOLD and table.hold_until and table.hold_until < now:
+            table.status = TableStatus.AVAILABLE
+            table.hold_until = None
+            table.hold_by_customer_id = None
+            db.add(table)
+            updated = True
+    
+    if updated:
+        await db.commit()
+        # Re-fetch or refresh if needed, but scalars should be updated in place
+    
+    return tables
 
 async def get_table_by_id(db: AsyncSession, table_id: int) -> Optional[Table]:
     query = select(Table).options(
-        selectinload(Table.bookings).selectinload(Booking.customer)
+        selectinload(Table.bookings).selectinload(Booking.customer),
+        selectinload(Table.hold_customer)
     ).where(Table.id == table_id)
     result = await db.execute(query)
     return result.scalar_one_or_none()
@@ -45,6 +64,28 @@ async def delete_table(db: AsyncSession, table_id: int) -> bool:
     db_table = await get_table_by_id(db, table_id)
     if not db_table:
         return False
-    await db.delete(db_table)
+    db.delete(db_table)
     await db.commit()
     return True
+
+async def hold_table(db: AsyncSession, table_id: int, customer_name: str, phone: Optional[str] = None, hold_until: Optional[datetime] = None) -> Optional[Table]:
+    db_table = await get_table_by_id(db, table_id)
+    if not db_table:
+        return None
+        
+    # Upsert Customer for the hold
+    cust_query = select(Customer).where(Customer.name == customer_name, Customer.phone == phone)
+    cust_result = await db.execute(cust_query)
+    db_customer = cust_result.scalars().first()
+    if not db_customer:
+        db_customer = Customer(name=customer_name, phone=phone)
+        db.add(db_customer)
+        await db.flush()
+        
+    db_table.status = TableStatus.HOLD
+    db_table.hold_until = hold_until or (datetime.now() + timedelta(minutes=10))
+    db_table.hold_by_customer_id = db_customer.id
+    db.add(db_table)
+    await db.commit()
+    await db.refresh(db_table)
+    return db_table

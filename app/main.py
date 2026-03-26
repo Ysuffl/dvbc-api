@@ -10,9 +10,9 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Setup: Create database tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Setup: Create database tables (now managed by Laravel)
+    # async with engine.begin() as conn:
+    #     await conn.run_sync(Base.metadata.create_all)
     yield
     # Shutdown logic if any goes here
 
