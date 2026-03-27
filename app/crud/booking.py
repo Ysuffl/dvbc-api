@@ -24,7 +24,7 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     # Check for overlapping bookings
     overlap_query = select(Booking).where(
         Booking.table_id == booking_in.table_id,
-        Booking.status != BookingStatus.CANCELLED,
+        Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD]),
         Booking.start_time < booking_in.end_time,
         Booking.end_time > booking_in.start_time
     )
@@ -58,15 +58,33 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             db_customer.gender = booking_in.gender
             db.add(db_customer)
 
-    db_booking = Booking(
-        table_id=booking_in.table_id,
-        customer_id=db_customer.id,
-        pax=booking_in.pax,
-        start_time=booking_in.start_time,
-        end_time=booking_in.end_time,
-        status=BookingStatus.PENDING,
-        notes=booking_in.notes,
+    # Check if there's an existing HOLD booking for this table and customer to reuse/update
+    hold_query = select(Booking).where(
+        Booking.table_id == booking_in.table_id,
+        Booking.status == BookingStatus.HOLD,
+        Booking.customer_id == db_customer.id
     )
+    hold_result = await db.execute(hold_query)
+    db_booking = hold_result.scalars().first()
+
+    if db_booking:
+        # Update existing hold to pending
+        db_booking.pax = booking_in.pax
+        db_booking.start_time = booking_in.start_time
+        db_booking.end_time = booking_in.end_time
+        db_booking.status = BookingStatus.PENDING
+        db_booking.notes = booking_in.notes
+    else:
+        # Create new
+        db_booking = Booking(
+            table_id=booking_in.table_id,
+            customer_id=db_customer.id,
+            pax=booking_in.pax,
+            start_time=booking_in.start_time,
+            end_time=booking_in.end_time,
+            status=BookingStatus.PENDING,
+            notes=booking_in.notes,
+        )
     
     # Attach Tags
     if booking_in.tag_ids:
@@ -95,15 +113,18 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     if not db_booking:
         return None
     
-    db_booking.status = status
     if cancel_reason is not None:
         db_booking.cancel_reason = cancel_reason
-    
+
     if status == BookingStatus.BILLED:
         now = datetime.now()
         db_booking.billed_at = now
         if billed_price is not None:
             db_booking.billed_price = billed_price
+        # User requested that billed means complete
+        status = BookingStatus.COMPLETED
+    
+    db_booking.status = status
         
     if db_booking.customer_id:
         cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
@@ -156,8 +177,22 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     return db_booking
 
 async def get_customers(db: AsyncSession) -> List[Customer]:
-    result = await db.execute(select(Customer).order_by(Customer.name))
+    result = await db.execute(select(Customer).options(selectinload(Customer.master_level)).order_by(Customer.name))
     return result.scalars().all()
+
+from app.schemas.table_booking import CustomerCreate
+
+async def create_customer(db: AsyncSession, customer_in: CustomerCreate) -> Customer:
+    db_customer = Customer(
+        name=customer_in.name,
+        phone=customer_in.phone,
+        age=customer_in.age,
+        gender=customer_in.gender,
+    )
+    db.add(db_customer)
+    await db.commit()
+    await db.refresh(db_customer)
+    return db_customer
 
 async def get_master_tags(db: AsyncSession) -> List[MasterTag]:
     result = await db.execute(select(MasterTag).order_by(MasterTag.group_name, MasterTag.name))
@@ -209,17 +244,36 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         if not db_table:
             continue
 
-        db_booking = Booking(
-            table_id=table_id,
-            customer_id=db_customer.id,
-            pax=booking_in.pax,
-            start_time=booking_in.start_time,
-            end_time=booking_in.end_time,
-            status=BookingStatus.PENDING,
-            notes=f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}",
-            # Tags are shared/copied to all bookings in the event
-            tags=db_tags,
+        # Check if there's an existing HOLD booking for this table and customer to reuse/update
+        hold_query = select(Booking).where(
+            Booking.table_id == table_id,
+            Booking.status == BookingStatus.HOLD,
+            Booking.customer_id == db_customer.id
         )
+        hold_result = await db.execute(hold_query)
+        db_booking = hold_result.scalars().first()
+
+        if db_booking:
+            # Update existing hold to pending
+            db_booking.pax = booking_in.pax
+            db_booking.start_time = booking_in.start_time
+            db_booking.end_time = booking_in.end_time
+            db_booking.status = BookingStatus.PENDING
+            db_booking.notes = f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}"
+            db_booking.tags = db_tags
+        else:
+            # Create new
+            db_booking = Booking(
+                table_id=table_id,
+                customer_id=db_customer.id,
+                pax=booking_in.pax,
+                start_time=booking_in.start_time,
+                end_time=booking_in.end_time,
+                status=BookingStatus.PENDING,
+                notes=f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}",
+                # Tags are shared/copied to all bookings in the event
+                tags=db_tags,
+            )
         db.add(db_booking)
         
         db_table.status = TableStatus.BOOKED
@@ -237,3 +291,52 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
     ).where(Booking.id.in_(booking_ids))
     result = await db.execute(stmt)
     return list(result.unique().scalars().all())
+
+async def update_booking(db: AsyncSession, booking_id: int, booking_in: BookingUpdate) -> Optional[Booking]:
+    db_booking = await get_booking_by_id(db, booking_id)
+    if not db_booking:
+        return None
+    
+    update_data = booking_in.model_dump(exclude_unset=True)
+    
+    # Handle direct booking fields
+    for field in ["pax", "start_time", "end_time", "notes", "status", "billed_at", "billed_price", "cancel_reason"]:
+        if field in update_data:
+            setattr(db_booking, field, update_data[field])
+            
+    # Handle tags
+    if "tag_ids" in update_data and update_data["tag_ids"] is not None:
+        tag_query = select(MasterTag).where(MasterTag.id.in_(update_data["tag_ids"]))
+        tag_result = await db.execute(tag_query)
+        db_booking.tags = tag_result.scalars().all()
+        
+    # Handle customer updates
+    if db_booking.customer_id:
+        cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
+        cust_result = await db.execute(cust_query)
+        db_customer = cust_result.scalar_one_or_none()
+        if db_customer:
+            if "customer_name" in update_data:
+                db_customer.name = update_data["customer_name"]
+            if "customer_phone" in update_data:
+                db_customer.phone = update_data["customer_phone"]
+            if "customer_category" in update_data:
+                db_customer.category = update_data["customer_category"]
+            if "customer_age" in update_data:
+                db_customer.age = update_data["customer_age"]
+            if "customer_gender" in update_data:
+                db_customer.gender = update_data["customer_gender"]
+            db.add(db_customer)
+            
+    db.add(db_booking)
+    await db.commit()
+    await db.refresh(db_booking)
+    
+    # Re-fetch with joined relations
+    stmt = select(Booking).options(
+        selectinload(Booking.customer),
+        selectinload(Booking.tags)
+    ).where(Booking.id == booking_id)
+    result = await db.execute(stmt)
+    return result.unique().scalar_one_or_none()
+

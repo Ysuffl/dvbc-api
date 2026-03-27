@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Union
 from app.db.session import get_db
-from app.crud.booking import get_bookings, create_booking, get_booking_by_id, update_booking_status, create_event_bookings, get_master_tags
+from app.crud.booking import (
+    get_bookings, create_booking, get_booking_by_id, 
+    update_booking_status, create_event_bookings, get_master_tags,
+    update_booking
+)
 from app.crud.table import get_table_by_id
 from app.schemas.table_booking import (
     BookingCreate, BookingUpdate, BookingResponse, TableResponse, 
@@ -84,4 +88,22 @@ async def update_booking_status_route(booking_id: int, booking_update: BookingUp
             return {"status": "success", "message": f"Booking {booking_id} has been processed and archived."}
         raise HTTPException(status_code=404, detail="Booking record not found after update")
     
+    
     return BookingResponse.model_validate(db_booking)
+
+@router.patch("/{booking_id}", response_model=BookingResponse)
+async def patch_booking(booking_id: int, booking_in: BookingUpdate, db: AsyncSession = Depends(get_db)):
+    db_booking = await update_booking(db, booking_id, booking_in)
+    if not db_booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    # Notify all clients about possible table/booking update
+    db_table = await get_table_by_id(db, db_booking.table_id)
+    if db_table:
+        await manager.broadcast({
+            "type": "table_update",
+            "data": TableResponse.model_validate(db_table).model_dump(mode="json")
+        })
+        
+    return db_booking
+

@@ -32,8 +32,18 @@ class CustomerCategory(str, enum.Enum):
     YOUNGSTER = "youngster"
 
 class Gender(str, enum.Enum):
-    MALE = "Laki-laki"
-    FEMALE = "Perempuan"
+    MALE = "MALE"
+    FEMALE = "FEMALE"
+
+# Area Schemas
+class AreaResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    floor_number: int = 1
+    is_active: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 # Table Schemas
 class TableBase(BaseModel):
@@ -42,10 +52,12 @@ class TableBase(BaseModel):
     y_pos: float
     shape: str
     status: TableStatus = TableStatus.AVAILABLE
-    area_id: str
+    area_id: Optional[str] = None          # legacy
+    area_fk_id: Optional[int] = None       # FK ke areas
+    min_spending: float = 0.0              # minimum cash meja
+    capacity: int = 4                      # kapasitas
     hold_until: Optional[datetime] = None
     hold_by_customer_id: Optional[int] = None
-    hold_customer: Optional[CustomerResponse] = None
 
 class TableCreate(TableBase):
     pass
@@ -57,6 +69,9 @@ class TableUpdate(BaseModel):
     shape: Optional[str] = None
     status: Optional[TableStatus] = None
     area_id: Optional[str] = None
+    area_fk_id: Optional[int] = None
+    min_spending: Optional[float] = None
+    capacity: Optional[int] = None
     hold_until: Optional[datetime] = None
     hold_by_customer_id: Optional[int] = None
 
@@ -83,9 +98,14 @@ class TagResponse(BaseModel):
 class CustomerBase(BaseModel):
     name: str
     phone: Optional[str] = None
-    category: CustomerCategory = CustomerCategory.REGULER
     age: Optional[int] = None
     gender: Optional[Gender] = None
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: str
+    age: Optional[int] = None
+    gender: Gender
 
 class CustomerResponse(CustomerBase):
     id: int
@@ -139,10 +159,22 @@ class EventBookingCreate(BaseModel):
     tag_ids: Optional[List[int]] = []
 
 class BookingUpdate(BaseModel):
+    pax: Optional[int] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    notes: Optional[str] = None
     status: Optional[BookingStatus] = None
     billed_at: Optional[datetime] = None
     billed_price: Optional[float] = None
     cancel_reason: Optional[str] = None
+    tag_ids: Optional[List[int]] = None
+    
+    # Allow updating basic customer info via booking update
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_category: Optional[CustomerCategory] = None
+    customer_age: Optional[int] = None
+    customer_gender: Optional[Gender] = None
 
 class BookingResponse(BaseModel):
     id: int
@@ -166,6 +198,8 @@ class BookingResponse(BaseModel):
 class TableResponse(TableBase):
     id: int
     bookings: List[BookingResponse] = []
+    hold_customer: Optional[CustomerResponse] = None
+    area: Optional[AreaResponse] = None    # nested area info
 
     model_config = ConfigDict(from_attributes=True)
 

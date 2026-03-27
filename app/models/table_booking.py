@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, Enum, ForeignKey, DateTime, Table as SQLTable
+from sqlalchemy import Column, Integer, String, Float, Numeric, Enum, ForeignKey, DateTime, Table as SQLTable
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.db.base_class import Base
 import enum
 from datetime import datetime
@@ -19,6 +20,7 @@ class BookingStatus(str, enum.Enum):
     CANCELLED = "cancelled"
     COMPLETED = "completed"
     BILLED = "billed"
+    HOLD = "hold"
 
 class CustomerCategory(str, enum.Enum):
     REGULER = "reguler"
@@ -33,8 +35,8 @@ class CustomerCategory(str, enum.Enum):
     YOUNGSTER = "youngster"
     
 class Gender(str, enum.Enum):
-    MALE = "Laki-laki"
-    FEMALE = "Perempuan"
+    MALE = "MALE"
+    FEMALE = "FEMALE"
 
 booking_tags = SQLTable(
     "booking_tags",
@@ -78,17 +80,28 @@ class Customer(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     phone = Column(String, nullable=True)
-    category = Column(Enum(CustomerCategory, native_enum=False, length=255), default=CustomerCategory.REGULER)
     age = Column(Integer, nullable=True)
-    gender = Column(Enum(Gender, native_enum=False, length=255), nullable=True)
+    gender = Column(Enum(Gender, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), nullable=True)
     total_spending = Column(Float, default=0.0)
     master_level_id = Column(Integer, ForeignKey("master_levels.id"), default=1)
     created_at = Column(DateTime, default=datetime.now)
 
     master_level = relationship("MasterLevel", lazy="joined")
     bookings = relationship("Booking", back_populates="customer")
-    last_status = Column(Enum(BookingStatus, native_enum=False, length=255), nullable=True)
     last_visit = Column(DateTime, nullable=True)
+
+class Area(Base):
+    __tablename__ = "areas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(String, nullable=True)
+    floor_number = Column(Integer, default=1)
+    is_active = Column(String, default="1")  # boolean as string for compat
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    tables = relationship("Table", back_populates="area")
 
 class Table(Base):
     __tablename__ = "tables"
@@ -98,11 +111,17 @@ class Table(Base):
     x_pos = Column(Float, nullable=False)
     y_pos = Column(Float, nullable=False)
     shape = Column(String, nullable=False)
-    status = Column(Enum(TableStatus, native_enum=False, length=255), default=TableStatus.AVAILABLE)
-    area_id = Column(String, nullable=False)
+    status = Column(Enum(TableStatus, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), default=TableStatus.AVAILABLE)
+    area_id = Column(String, nullable=True)        # legacy string (tetap ada)
+    area_fk_id = Column(Integer, ForeignKey("areas.id"), nullable=True)  # FK ke areas
+    min_spending = Column(Numeric(15, 2), default=0)  # minimum cash untuk meja ini
+    capacity = Column(Integer, default=4)              # kapasitas tempat duduk
     hold_until = Column(DateTime, nullable=True)
     hold_by_customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     hold_customer = relationship("Customer", foreign_keys=[hold_by_customer_id], lazy="joined")
+    area = relationship("Area", back_populates="tables", lazy="joined")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     bookings = relationship("Booking", back_populates="table")
 
@@ -116,8 +135,11 @@ class Booking(Base):
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
     billed_at = Column(DateTime, nullable=True)
-    billed_price = Column(Float, nullable=True)
-    status = Column(Enum(BookingStatus, native_enum=False, length=255), default=BookingStatus.PENDING)
+    billed_price = Column(Numeric(15, 2), nullable=True)  # Numeric untuk presisi uang
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    status = Column(Enum(BookingStatus, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), default=BookingStatus.PENDING)
+    category = Column(Enum(CustomerCategory, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), default=CustomerCategory.REGULER)
     notes = Column(String, nullable=True)
     cancel_reason = Column(String, nullable=True)
 
