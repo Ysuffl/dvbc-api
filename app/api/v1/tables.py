@@ -71,9 +71,14 @@ async def mark_table_as_occupied(table_id: int, db: AsyncSession = Depends(get_d
     
     # Update active booking status
     now = datetime.now()
-    find_booking_query = select(Booking).where(Booking.table_id == table_id, Booking.start_time <= now, Booking.end_time >= now, Booking.status != BookingStatus.CANCELLED)
+    # Update active or upcoming booking status
+    find_booking_query = select(Booking).where(
+        Booking.table_id == table_id, 
+        Booking.status.in_([BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.HOLD])
+    ).order_by(Booking.start_time.asc())
+    
     booking_result = await db.execute(find_booking_query)
-    db_booking = booking_result.unique().scalar_one_or_none()
+    db_booking = booking_result.unique().scalars().first()
     if db_booking:
         db_booking.status = BookingStatus.ARRIVED
         db.add(db_booking)

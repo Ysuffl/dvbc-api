@@ -43,7 +43,6 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
         db_customer = Customer(
             name=booking_in.customer_name,
             phone=booking_in.phone,
-            category=booking_in.customer_category,
             age=booking_in.age,
             gender=booking_in.gender,
         )
@@ -73,6 +72,7 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
         db_booking.start_time = booking_in.start_time
         db_booking.end_time = booking_in.end_time
         db_booking.status = BookingStatus.PENDING
+        db_booking.category = booking_in.customer_category
         db_booking.notes = booking_in.notes
     else:
         # Create new
@@ -83,6 +83,7 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             start_time=booking_in.start_time,
             end_time=booking_in.end_time,
             status=BookingStatus.PENDING,
+            category=booking_in.customer_category,
             notes=booking_in.notes,
         )
     
@@ -136,7 +137,6 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
                 db_customer.total_spending = (db_customer.total_spending or 0.0) + billed_price
                 db_customer.master_level_id = compute_master_level_id(db_customer.total_spending)
             
-            db_customer.last_status = status
             db_customer.last_visit = datetime.now()
             db.add(db_customer)
 
@@ -212,7 +212,6 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         db_customer = Customer(
             name=booking_in.customer_name,
             phone=booking_in.phone,
-            category=booking_in.customer_category,
             age=booking_in.age,
             gender=booking_in.gender,
         )
@@ -260,6 +259,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
             db_booking.end_time = booking_in.end_time
             db_booking.status = BookingStatus.PENDING
             db_booking.notes = f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}"
+            db_booking.category = booking_in.customer_category
             db_booking.tags = db_tags
         else:
             # Create new
@@ -270,6 +270,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
                 start_time=booking_in.start_time,
                 end_time=booking_in.end_time,
                 status=BookingStatus.PENDING,
+                category=booking_in.customer_category,
                 notes=f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}",
                 # Tags are shared/copied to all bookings in the event
                 tags=db_tags,
@@ -321,7 +322,7 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_in: BookingU
             if "customer_phone" in update_data:
                 db_customer.phone = update_data["customer_phone"]
             if "customer_category" in update_data:
-                db_customer.category = update_data["customer_category"]
+                db_booking.category = update_data["customer_category"]
             if "customer_age" in update_data:
                 db_customer.age = update_data["customer_age"]
             if "customer_gender" in update_data:

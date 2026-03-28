@@ -112,7 +112,6 @@ class CustomerResponse(CustomerBase):
     total_spending: float = 0.0
     master_level_id: int = 1
     master_level: Optional[MasterLevelResponse] = None
-    last_status: Optional[BookingStatus] = None
     last_visit: Optional[datetime] = None
     created_at: datetime
     
