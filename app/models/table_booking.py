@@ -84,6 +84,7 @@ class Customer(Base):
     gender = Column(Enum(Gender, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), nullable=True)
     total_spending = Column(Float, default=0.0)
     master_level_id = Column(Integer, ForeignKey("master_levels.id"), default=1)
+    total_visits = Column(Integer, default=0)   # sync dengan migration Laravel
     created_at = Column(DateTime, default=datetime.now)
 
     master_level = relationship("MasterLevel", lazy="joined")

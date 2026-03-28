@@ -69,9 +69,7 @@ async def mark_table_as_occupied(table_id: int, db: AsyncSession = Depends(get_d
     db_table.status = TableStatus.OCCUPIED
     db.add(db_table)
     
-    # Update active booking status
-    now = datetime.now()
-    # Update active or upcoming booking status
+    # Cari booking aktif/upcoming dan set ke ARRIVED
     find_booking_query = select(Booking).where(
         Booking.table_id == table_id, 
         Booking.status.in_([BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.HOLD])
@@ -82,6 +80,16 @@ async def mark_table_as_occupied(table_id: int, db: AsyncSession = Depends(get_d
     if db_booking:
         db_booking.status = BookingStatus.ARRIVED
         db.add(db_booking)
+        
+        # Increment total_visits customer saat benar-benar datang
+        from app.models.table_booking import Customer
+        cust_query = select(Customer).where(Customer.id == db_booking.customer_id)
+        cust_result = await db.execute(cust_query)
+        db_customer = cust_result.scalar_one_or_none()
+        if db_customer:
+            db_customer.total_visits = (db_customer.total_visits or 0) + 1
+            db_customer.last_visit = datetime.now()
+            db.add(db_customer)
     
     await db.commit()
     db_table = await get_table_by_id(db, table_id)

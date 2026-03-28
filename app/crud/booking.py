@@ -117,12 +117,15 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     if cancel_reason is not None:
         db_booking.cancel_reason = cancel_reason
 
-    if status == BookingStatus.BILLED:
+    # Simpan apakah ini billing sebelum overwrite status
+    is_billed = (status == BookingStatus.BILLED)
+
+    if is_billed:
         now = datetime.now()
         db_booking.billed_at = now
         if billed_price is not None:
             db_booking.billed_price = billed_price
-        # User requested that billed means complete
+        # billed → langsung completed
         status = BookingStatus.COMPLETED
     
     db_booking.status = status
@@ -133,9 +136,14 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
         db_customer = cust_result.scalar_one_or_none()
         
         if db_customer:
-            if status == BookingStatus.BILLED and billed_price is not None:
+            # Update total_spending dan level saat billed
+            if is_billed and billed_price is not None:
                 db_customer.total_spending = (db_customer.total_spending or 0.0) + billed_price
                 db_customer.master_level_id = compute_master_level_id(db_customer.total_spending)
+            
+            # Increment total_visits saat customer benar-benar datang (ARRIVED)
+            if status == BookingStatus.ARRIVED:
+                db_customer.total_visits = (db_customer.total_visits or 0) + 1
             
             db_customer.last_visit = datetime.now()
             db.add(db_customer)
@@ -147,6 +155,8 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     if status in [BookingStatus.CANCELLED, BookingStatus.COMPLETED]:
         if db_table:
             db_table.status = TableStatus.AVAILABLE
+            db_table.hold_until = None
+            db_table.hold_by_customer_id = None
             db.add(db_table)
         db.add(db_booking)
         await db.commit()
@@ -161,13 +171,6 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     elif status == BookingStatus.ARRIVED:
         if db_table:
             db_table.status = TableStatus.OCCUPIED
-            db.add(db_table)
-            
-    elif status == BookingStatus.BILLED:
-        if db_table:
-            db_table.status = TableStatus.AVAILABLE
-            db_table.hold_until = None
-            db_table.hold_by_customer_id = None
             db.add(db_table)
 
     db.add(db_booking)
