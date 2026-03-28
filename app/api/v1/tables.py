@@ -111,16 +111,19 @@ async def mark_table_as_available(table_id: int, db: AsyncSession = Depends(get_
     db_table.hold_by_customer_id = None
     db.add(db_table)
     
-    # Update active or recently active booking status to completed
-    now = datetime.now()
+    # Update active or hold booking status
     find_booking_query = select(Booking).where(
         Booking.table_id == table_id, 
-        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ARRIVED, BookingStatus.BILLED])
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ARRIVED, BookingStatus.BILLED, BookingStatus.HOLD])
     )
     booking_result = await db.execute(find_booking_query)
-    db_booking = booking_result.unique().scalar_one_or_none()
-    if db_booking:
-        db_booking.status = BookingStatus.COMPLETED
+    # We might have multiple active/hold bookings if something went wrong, let's close all of them
+    for db_booking in booking_result.unique().scalars().all():
+        if db_booking.status == BookingStatus.HOLD:
+            db_booking.status = BookingStatus.CANCELLED
+            db_booking.cancel_reason = "Hold dinonaktifkan / dicancel oleh sistem"
+        else:
+            db_booking.status = BookingStatus.COMPLETED
         db.add(db_booking)
         
     await db.commit()

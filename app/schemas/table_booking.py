@@ -18,6 +18,7 @@ class BookingStatus(str, enum.Enum):
     CANCELLED = "cancelled"
     COMPLETED = "completed"
     BILLED = "billed"
+    HOLD = "hold"
 
 class CustomerCategory(str, enum.Enum):
     REGULER = "reguler"
@@ -112,6 +113,7 @@ class CustomerResponse(CustomerBase):
     total_spending: float = 0.0
     master_level_id: int = 1
     master_level: Optional[MasterLevelResponse] = None
+    total_visits: int = 0
     last_visit: Optional[datetime] = None
     created_at: datetime
     
@@ -185,6 +187,7 @@ class BookingResponse(BaseModel):
     billed_at: Optional[datetime] = None
     billed_price: Optional[float] = None
     status: BookingStatus
+    category: Optional[str] = 'reguler'   # kategori booking
     notes: Optional[str] = None
     cancel_reason: Optional[str] = None
     tags: List[TagResponse] = []

@@ -57,14 +57,19 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             db_customer.gender = booking_in.gender
             db.add(db_customer)
 
-    # Check if there's an existing HOLD booking for this table and customer to reuse/update
-    hold_query = select(Booking).where(
-        Booking.table_id == booking_in.table_id,
-        Booking.status == BookingStatus.HOLD,
-        Booking.customer_id == db_customer.id
-    )
-    hold_result = await db.execute(hold_query)
-    db_booking = hold_result.scalars().first()
+    # Cancel ANY other HOLD bookings for this table to avoid lingering HOLDS
+    all_holds_query = select(Booking).where(Booking.table_id == booking_in.table_id, Booking.status == BookingStatus.HOLD)
+    all_holds_result = await db.execute(all_holds_query)
+    all_holds = all_holds_result.unique().scalars().all()
+    
+    db_booking = None
+    for hold_b in all_holds:
+        if hold_b.customer_id == db_customer.id and db_booking is None:
+            db_booking = hold_b  # Reuse this one
+        else:
+            hold_b.status = BookingStatus.CANCELLED
+            hold_b.cancel_reason = "Overwritten by new booking"
+            db.add(hold_b)
 
     if db_booking:
         # Update existing hold to pending
@@ -96,8 +101,9 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     db.add(db_booking)
     
     db_table.status = TableStatus.BOOKED
+    db_table.hold_until = None
+    db_table.hold_by_customer_id = None
     db.add(db_table)
-    
     await db.commit()
     await db.refresh(db_booking)
     if db_table:
@@ -166,6 +172,8 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
     elif status == BookingStatus.CONFIRMED:
         if db_table:
             db_table.status = TableStatus.BOOKED
+            db_table.hold_until = None
+            db_table.hold_by_customer_id = None
             db.add(db_table)
     
     elif status == BookingStatus.ARRIVED:
@@ -246,14 +254,19 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         if not db_table:
             continue
 
-        # Check if there's an existing HOLD booking for this table and customer to reuse/update
-        hold_query = select(Booking).where(
-            Booking.table_id == table_id,
-            Booking.status == BookingStatus.HOLD,
-            Booking.customer_id == db_customer.id
-        )
-        hold_result = await db.execute(hold_query)
-        db_booking = hold_result.scalars().first()
+        # Cancel ANY other HOLD bookings for this table to avoid lingering HOLDS
+        all_holds_query = select(Booking).where(Booking.table_id == table_id, Booking.status == BookingStatus.HOLD)
+        all_holds_result = await db.execute(all_holds_query)
+        all_holds = all_holds_result.unique().scalars().all()
+        
+        db_booking = None
+        for hold_b in all_holds:
+            if hold_b.customer_id == db_customer.id and db_booking is None:
+                db_booking = hold_b  # Reuse this one
+            else:
+                hold_b.status = BookingStatus.CANCELLED
+                hold_b.cancel_reason = "Overwritten by event booking"
+                db.add(hold_b)
 
         if db_booking:
             # Update existing hold to pending
@@ -281,6 +294,8 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         db.add(db_booking)
         
         db_table.status = TableStatus.BOOKED
+        db_table.hold_until = None
+        db_table.hold_by_customer_id = None
         db.add(db_table)
         
         bookings.append(db_booking)
