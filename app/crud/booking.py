@@ -5,7 +5,11 @@ from sqlalchemy.orm import selectinload
 from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer, compute_master_level_id, MasterTag
 from app.schemas.table_booking import BookingCreate, BookingUpdate, EventBookingCreate
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+
+def get_now():
+    # Force Asia/Jakarta (UTC+7) to match Laravel
+    return datetime.utcnow() + timedelta(hours=7)
 
 async def get_bookings(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Booking]:
     query = select(Booking).options(selectinload(Booking.tags)).offset(skip).limit(limit)
@@ -21,12 +25,14 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     if not db_table:
         return None
 
-    # Check for overlapping bookings
+    # Check for overlapping bookings (only consider non-expired active bookings)
+    now = get_now()
     overlap_query = select(Booking).where(
         Booking.table_id == booking_in.table_id,
         Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD]),
         Booking.start_time < booking_in.end_time,
-        Booking.end_time > booking_in.start_time
+        Booking.end_time > booking_in.start_time,
+        Booking.end_time > now  # Ignore bookings that should have finished by now
     )
     overlap_result = await db.execute(overlap_query)
     if overlap_result.unique().scalars().first():
@@ -64,14 +70,14 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     
     db_booking = None
     for hold_b in all_holds:
-        if hold_b.customer_id == db_customer.id and db_booking is None:
+        if db_customer and hold_b.customer_id == db_customer.id and db_booking is None:
             db_booking = hold_b  # Reuse this one
         else:
             hold_b.status = BookingStatus.CANCELLED
             hold_b.cancel_reason = "Overwritten by new booking"
             db.add(hold_b)
 
-    if db_booking:
+    if db_booking and booking_in:
         # Update existing hold to pending
         db_booking.pax = booking_in.pax
         db_booking.start_time = booking_in.start_time
@@ -79,7 +85,7 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
         db_booking.status = BookingStatus.PENDING
         db_booking.category = booking_in.customer_category
         db_booking.notes = booking_in.notes
-    else:
+    elif booking_in and db_customer:
         # Create new
         db_booking = Booking(
             table_id=booking_in.table_id,
@@ -91,6 +97,9 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             category=booking_in.customer_category,
             notes=booking_in.notes,
         )
+    
+    if not db_booking:
+        return None
     
     # Attach Tags
     if booking_in.tag_ids:
@@ -244,7 +253,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         db_tags = tag_result.scalars().all()
 
     bookings = []
-    now = datetime.now()
+    now = get_now()
     
     for table_id in booking_in.table_ids:
         table_query = select(Table).where(Table.id == table_id)
@@ -254,6 +263,17 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         if not db_table:
             continue
 
+        # Overlap Check for each table in the event
+        overlap_query = select(Booking).where(
+            Booking.table_id == table_id,
+            Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD]),
+            Booking.start_time < booking_in.end_time,
+            Booking.end_time > booking_in.start_time,
+            Booking.end_time > now
+        )
+        overlap_result = await db.execute(overlap_query)
+        if overlap_result.unique().scalars().first():
+            continue # Skip this specific table if busy, or handle as error
         # Cancel ANY other HOLD bookings for this table to avoid lingering HOLDS
         all_holds_query = select(Booking).where(Booking.table_id == table_id, Booking.status == BookingStatus.HOLD)
         all_holds_result = await db.execute(all_holds_query)
@@ -291,6 +311,10 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
                 # Tags are shared/copied to all bookings in the event
                 tags=db_tags,
             )
+        
+        if not db_booking:
+            continue
+
         db.add(db_booking)
         
         db_table.status = TableStatus.BOOKED
