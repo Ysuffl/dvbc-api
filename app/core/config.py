@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
 
+    # Error Tracking
+    SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
 

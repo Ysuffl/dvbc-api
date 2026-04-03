@@ -1,3 +1,7 @@
+# WARNING: This database is SHARED with the Laravel project (database_cust_web).
+# Any schema changes MUST be synchronized between Laravel migrations and these SQLAlchemy models.
+# Laravel is the primary owner of the database schema migrations.
+
 from sqlalchemy import Column, Integer, String, Float, Numeric, Enum, ForeignKey, DateTime, Table as SQLTable
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -60,19 +64,12 @@ class MasterLevel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)
-    min_spending = Column(Float, default=0.0)
+    min_spending = Column(Numeric(15, 2), default=0.0)
     badge_color = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-def compute_master_level_id(total_spending: float) -> int:
-    if total_spending >= 20_000_000:
-        return 4 # Platinum
-    elif total_spending >= 5_000_000:
-        return 3 # Gold
-    elif total_spending >= 1_000_000:
-        return 2 # Silver
-    return 1 # Bronze
+# compute_master_level_id is deprecated. Use database-driven lookup in CRUD.
 
 class Customer(Base):
     __tablename__ = "customers"
@@ -82,7 +79,7 @@ class Customer(Base):
     phone = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
     gender = Column(Enum(Gender, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), nullable=True)
-    total_spending = Column(Float, default=0.0)
+    total_spending = Column(Numeric(15, 2), default=0.0)
     master_level_id = Column(Integer, ForeignKey("master_levels.id"), default=1)
     total_visits = Column(Integer, default=0)   # sync dengan migration Laravel
     created_at = Column(DateTime, default=datetime.now)

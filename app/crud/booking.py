@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, delete
 from sqlalchemy.orm import selectinload
-from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer, compute_master_level_id, MasterTag
+from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer, MasterLevel, MasterTag
 from app.schemas.table_booking import BookingCreate, BookingUpdate, EventBookingCreate
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -151,10 +151,18 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
         db_customer = cust_result.scalar_one_or_none()
         
         if db_customer:
-            # Update total_spending dan level saat billed
+            # Update total_spending dan level saat billed dari database (Source of Truth)
             if is_billed and billed_price is not None:
-                db_customer.total_spending = (db_customer.total_spending or 0.0) + billed_price
-                db_customer.master_level_id = compute_master_level_id(db_customer.total_spending)
+                # Precision fix: handles Decimal from DB vs float from API
+                spending_before = float(db_customer.total_spending or 0.0)
+                db_customer.total_spending = spending_before + float(billed_price)
+                
+                # Fetch levels from DB order by min_spending desc
+                level_stmt = select(MasterLevel).where(MasterLevel.min_spending <= db_customer.total_spending).order_by(MasterLevel.min_spending.desc()).limit(1)
+                level_res = await db.execute(level_stmt)
+                matching_level = level_res.scalar_one_or_none()
+                if matching_level:
+                    db_customer.master_level_id = matching_level.id
             
             # Increment total_visits saat customer benar-benar datang (ARRIVED)
             if status == BookingStatus.ARRIVED:

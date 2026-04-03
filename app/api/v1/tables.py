@@ -145,14 +145,14 @@ async def mark_table_as_billed(table_id: int, billed_in: TableBilled, db: AsyncS
     if not db_table:
         raise HTTPException(status_code=404, detail="Table not found")
     
-    # Update active booking status
+    # Update active booking status (handle multiple statuses for flexibility)
     find_booking_query = select(Booking).where(
         Booking.table_id == table_id, 
-        Booking.status == BookingStatus.ARRIVED
+        Booking.status.in_([BookingStatus.ARRIVED, BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.HOLD])
     )
     booking_result = await db.execute(find_booking_query)
-    db_booking = booking_result.unique().scalar_one_or_none()
-    if db_booking:
+    # We use scalars().all() to handle potential multiple bookings assigned (though usually one active)
+    for db_booking in booking_result.unique().scalars().all():
         from app.crud.booking import update_booking_status
         await update_booking_status(db, db_booking.id, BookingStatus.BILLED, None, billed_in.billed_price)
     

@@ -8,3 +8,4 @@ uvicorn
 alembic
 psycopg2-binary
 websockets
+sentry-sdk[fastapi]

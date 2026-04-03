@@ -7,6 +7,14 @@ from app.db.session import engine
 from app.db.base import Base # This Base has all models imported
 import asyncio
 from contextlib import asynccontextmanager
+import sentry_sdk
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
