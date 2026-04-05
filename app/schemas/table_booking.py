@@ -99,13 +99,13 @@ class TagResponse(BaseModel):
 class CustomerBase(BaseModel):
     name: str
     phone: Optional[str] = None
-    age: Optional[int] = None
+    age: Optional[str] = None
     gender: Optional[Gender] = None
 
 class CustomerCreate(BaseModel):
     name: str
     phone: str
-    age: Optional[int] = None
+    age: Optional[str] = None
     gender: Gender
 
 class CustomerResponse(CustomerBase):
@@ -137,7 +137,7 @@ class BookingCreate(BaseModel):
     customer_name: str
     customer_category: CustomerCategory = CustomerCategory.REGULER
     phone: Optional[str] = None
-    age: Optional[int] = None
+    age: Optional[str] = None
     gender: Optional[Gender] = None
     pax: int
     start_time: datetime
@@ -150,7 +150,7 @@ class EventBookingCreate(BaseModel):
     customer_name: str
     customer_category: CustomerCategory = CustomerCategory.EVENT
     phone: Optional[str] = None
-    age: Optional[int] = None
+    age: Optional[str] = None
     gender: Optional[Gender] = None
     pax: int
     start_time: datetime
@@ -174,7 +174,7 @@ class BookingUpdate(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     customer_category: Optional[CustomerCategory] = None
-    customer_age: Optional[int] = None
+    customer_age: Optional[str] = None
     customer_gender: Optional[Gender] = None
 
 class BookingResponse(BaseModel):

@@ -77,7 +77,7 @@ class Customer(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     phone = Column(String, nullable=True)
-    age = Column(Integer, nullable=True)
+    age = Column(String(20), nullable=True)
     gender = Column(Enum(Gender, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), nullable=True)
     total_spending = Column(Numeric(15, 2), default=0.0)
     master_level_id = Column(Integer, ForeignKey("master_levels.id"), default=1)

@@ -12,5 +12,5 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(Enum(UserRole, native_enum=False, length=255), default=UserRole.STAFF)
+    role = Column(Enum(UserRole, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), default=UserRole.STAFF)
     is_active = Column(Boolean, default=True)
