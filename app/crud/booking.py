@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, delete
 from sqlalchemy.orm import selectinload
-from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer, MasterLevel, MasterTag
+from app.models.table_booking import Booking, Table, TableStatus, BookingStatus, Customer, MasterLevel, MasterTag, MasterTagGroup, CustomerCategory
 from app.schemas.table_booking import BookingCreate, BookingUpdate, EventBookingCreate
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -51,16 +51,20 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             phone=booking_in.phone,
             age=booking_in.age,
             gender=booking_in.gender,
+            nat=booking_in.nat,
         )
         db.add(db_customer)
         await db.flush()
     else:
-        # Update age if provided and not yet set
+        # Update age/gender/nat if provided and not yet set
         if booking_in.age is not None and db_customer.age is None:
             db_customer.age = booking_in.age
             db.add(db_customer)
         if booking_in.gender is not None and db_customer.gender is None:
             db_customer.gender = booking_in.gender
+            db.add(db_customer)
+        if booking_in.nat is not None:
+            db_customer.nat = booking_in.nat
             db.add(db_customer)
 
     # Cancel ANY other HOLD bookings for this table to avoid lingering HOLDS
@@ -83,7 +87,6 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
         db_booking.start_time = booking_in.start_time
         db_booking.end_time = booking_in.end_time
         db_booking.status = BookingStatus.PENDING
-        db_booking.category = booking_in.customer_category
         db_booking.notes = booking_in.notes
     elif booking_in and db_customer:
         # Create new
@@ -94,7 +97,6 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
             start_time=booking_in.start_time,
             end_time=booking_in.end_time,
             status=BookingStatus.PENDING,
-            category=booking_in.customer_category,
             notes=booking_in.notes,
         )
     
@@ -113,14 +115,15 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     db_table.hold_until = None
     db_table.hold_by_customer_id = None
     db.add(db_table)
+    booking_id = db_booking.id
     await db.commit()
-    await db.refresh(db_booking)
-    if db_table:
-        await db.refresh(db_table)
-    return db_booking
+    return await get_booking_by_id(db, booking_id)
 
 async def get_booking_by_id(db: AsyncSession, booking_id: int) -> Optional[Booking]:
-    query = select(Booking).where(Booking.id == booking_id)
+    query = select(Booking).options(
+        selectinload(Booking.tags),
+        selectinload(Booking.customer)
+    ).where(Booking.id == booking_id)
     result = await db.execute(query)
     return result.unique().scalar_one_or_none()
 
@@ -182,9 +185,9 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
             db_table.hold_by_customer_id = None
             db.add(db_table)
         db.add(db_booking)
+        booking_id_val = db_booking.id
         await db.commit()
-        await db.refresh(db_booking)
-        return db_booking
+        return await get_booking_by_id(db, booking_id_val)
     
     elif status == BookingStatus.CONFIRMED:
         if db_table:
@@ -199,10 +202,9 @@ async def update_booking_status(db: AsyncSession, booking_id: int, status: Booki
             db.add(db_table)
 
     db.add(db_booking)
-
+    booking_id_val = db_booking.id
     await db.commit()
-    await db.refresh(db_booking)
-    return db_booking
+    return await get_booking_by_id(db, booking_id_val)
 
 async def get_customers(db: AsyncSession) -> List[Customer]:
     result = await db.execute(select(Customer).options(selectinload(Customer.master_level)).order_by(Customer.name))
@@ -216,6 +218,7 @@ async def create_customer(db: AsyncSession, customer_in: CustomerCreate) -> Cust
         phone=customer_in.phone,
         age=customer_in.age,
         gender=customer_in.gender,
+        nat=customer_in.nat,
     )
     db.add(db_customer)
     await db.commit()
@@ -223,7 +226,8 @@ async def create_customer(db: AsyncSession, customer_in: CustomerCreate) -> Cust
     return db_customer
 
 async def get_master_tags(db: AsyncSession) -> List[MasterTag]:
-    result = await db.execute(select(MasterTag).order_by(MasterTag.group_name, MasterTag.name))
+    query = select(MasterTag).join(MasterTag.group).options(selectinload(MasterTag.group)).order_by(MasterTagGroup.name, MasterTag.name)
+    result = await db.execute(query)
     return result.scalars().all()
 
 from app.schemas.table_booking import EventBookingCreate
@@ -242,6 +246,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
             phone=booking_in.phone,
             age=booking_in.age,
             gender=booking_in.gender,
+            nat=booking_in.nat,
         )
         db.add(db_customer)
         await db.flush()
@@ -251,6 +256,9 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
             db.add(db_customer)
         if booking_in.gender is not None and db_customer.gender is None:
             db_customer.gender = booking_in.gender
+            db.add(db_customer)
+        if booking_in.nat is not None:
+            db_customer.nat = booking_in.nat
             db.add(db_customer)
             
     # Pre-fetch Tags
@@ -303,7 +311,6 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
             db_booking.end_time = booking_in.end_time
             db_booking.status = BookingStatus.PENDING
             db_booking.notes = f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}"
-            db_booking.category = booking_in.customer_category
             db_booking.tags = db_tags
         else:
             # Create new
@@ -314,9 +321,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
                 start_time=booking_in.start_time,
                 end_time=booking_in.end_time,
                 status=BookingStatus.PENDING,
-                category=booking_in.customer_category,
                 notes=f"[{booking_in.area_name or 'EVENT'}] {booking_in.notes or ''}",
-                # Tags are shared/copied to all bookings in the event
                 tags=db_tags,
             )
         
@@ -371,23 +376,14 @@ async def update_booking(db: AsyncSession, booking_id: int, booking_in: BookingU
                 db_customer.name = update_data["customer_name"]
             if "customer_phone" in update_data:
                 db_customer.phone = update_data["customer_phone"]
-            if "customer_category" in update_data:
-                db_booking.category = update_data["customer_category"]
             if "customer_age" in update_data:
                 db_customer.age = update_data["customer_age"]
             if "customer_gender" in update_data:
                 db_customer.gender = update_data["customer_gender"]
+            if "customer_nat" in update_data:
+                db_customer.nat = update_data["customer_nat"]
             db.add(db_customer)
             
-    db.add(db_booking)
     await db.commit()
-    await db.refresh(db_booking)
-    
-    # Re-fetch with joined relations
-    stmt = select(Booking).options(
-        selectinload(Booking.customer),
-        selectinload(Booking.tags)
-    ).where(Booking.id == booking_id)
-    result = await db.execute(stmt)
-    return result.unique().scalar_one_or_none()
+    return await get_booking_by_id(db, booking_id)
 

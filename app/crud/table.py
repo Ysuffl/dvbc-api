@@ -10,6 +10,7 @@ from typing import List, Optional
 async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 1000) -> List[Table]:
     query = select(Table).options(
         selectinload(Table.bookings).selectinload(Booking.customer),
+        selectinload(Table.bookings).selectinload(Booking.tags),
         selectinload(Table.hold_customer),
         with_loader_criteria(Booking, Booking.status.in_([
             BookingStatus.PENDING,
@@ -41,6 +42,7 @@ async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 1000) -> List
 async def get_table_by_id(db: AsyncSession, table_id: int) -> Optional[Table]:
     query = select(Table).options(
         selectinload(Table.bookings).selectinload(Booking.customer),
+        selectinload(Table.bookings).selectinload(Booking.tags),
         selectinload(Table.hold_customer),
         with_loader_criteria(Booking, Booking.status.in_([
             BookingStatus.PENDING,
@@ -55,9 +57,9 @@ async def get_table_by_id(db: AsyncSession, table_id: int) -> Optional[Table]:
 async def create_table(db: AsyncSession, table_in: TableCreate) -> Table:
     db_table = Table(**table_in.model_dump())
     db.add(db_table)
+    table_id = db_table.id
     await db.commit()
-    await db.refresh(db_table)
-    return db_table
+    return await get_table_by_id(db, table_id)
 
 async def update_table(db: AsyncSession, table_id: int, table_in: TableUpdate) -> Optional[Table]:
     db_table = await get_table_by_id(db, table_id)
@@ -70,8 +72,7 @@ async def update_table(db: AsyncSession, table_id: int, table_in: TableUpdate) -
     
     db.add(db_table)
     await db.commit()
-    await db.refresh(db_table)
-    return db_table
+    return await get_table_by_id(db, table_id)
 
 async def delete_table(db: AsyncSession, table_id: int) -> bool:
     db_table = await get_table_by_id(db, table_id)
@@ -113,5 +114,4 @@ async def hold_table(db: AsyncSession, table_id: int, customer_name: str, phone:
     db.add(new_hold_booking)
     
     await db.commit()
-    await db.refresh(db_table)
-    return db_table
+    return await get_table_by_id(db, table_id)

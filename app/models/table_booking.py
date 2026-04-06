@@ -50,14 +50,31 @@ booking_tags = SQLTable(
     Column("tag_id", Integer, ForeignKey("master_tags.id", ondelete="CASCADE")),
 )
 
+class MasterTagGroup(Base):
+    __tablename__ = "master_tag_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    tags = relationship("MasterTag", back_populates="group")
+
 class MasterTag(Base):
     __tablename__ = "master_tags"
 
     id = Column(Integer, primary_key=True, index=True)
-    group_name = Column(String, nullable=False)
+    master_tag_group_id = Column(Integer, ForeignKey("master_tag_groups.id"), nullable=False)
     name = Column(String, nullable=False)
+    abbreviation = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    group = relationship("MasterTagGroup", back_populates="tags", lazy="selectin")
+
+    @property
+    def group_name(self) -> str:
+        return self.group.name if self.group else ""
 
 class MasterLevel(Base):
     __tablename__ = "master_levels"
@@ -79,6 +96,7 @@ class Customer(Base):
     phone = Column(String, nullable=True)
     age = Column(String(20), nullable=True)
     gender = Column(Enum(Gender, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), nullable=True)
+    nat = Column(String(10), nullable=True)  # Nationality: INA, CHD, ASIA, AUS, AFR, CHN, EUR, IND, UEA, USA
     total_spending = Column(Numeric(15, 2), default=0.0)
     master_level_id = Column(Integer, ForeignKey("master_levels.id"), default=1)
     total_visits = Column(Integer, default=0)   # sync dengan migration Laravel
@@ -137,10 +155,9 @@ class Booking(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     status = Column(Enum(BookingStatus, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), default=BookingStatus.PENDING)
-    category = Column(Enum(CustomerCategory, native_enum=False, length=255, values_callable=lambda obj: [e.value for e in obj]), default=CustomerCategory.REGULER)
     notes = Column(String, nullable=True)
     cancel_reason = Column(String, nullable=True)
 
     table = relationship("Table", back_populates="bookings")
     customer = relationship("Customer", back_populates="bookings")
-    tags = relationship("MasterTag", secondary=booking_tags, lazy="joined")
+    tags = relationship("MasterTag", secondary=booking_tags, lazy="selectin")

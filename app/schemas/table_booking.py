@@ -92,6 +92,7 @@ class TagResponse(BaseModel):
     id: int
     group_name: str
     name: str
+    abbreviation: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,12 +102,14 @@ class CustomerBase(BaseModel):
     phone: Optional[str] = None
     age: Optional[str] = None
     gender: Optional[Gender] = None
+    nat: Optional[str] = None  # Nationality: INA, CHD, ASIA, AUS, AFR, CHN, EUR, IND, UEA, USA
 
 class CustomerCreate(BaseModel):
     name: str
     phone: str
     age: Optional[str] = None
     gender: Gender
+    nat: Optional[str] = None
 
 class CustomerResponse(CustomerBase):
     id: int
@@ -135,10 +138,11 @@ class BookingBase(BaseModel):
 class BookingCreate(BaseModel):
     table_id: int
     customer_name: str
-    customer_category: CustomerCategory = CustomerCategory.REGULER
+    # customer_category dihapus — hardcoded 'reguler' di backend
     phone: Optional[str] = None
     age: Optional[str] = None
     gender: Optional[Gender] = None
+    nat: Optional[str] = None
     pax: int
     start_time: datetime
     end_time: datetime
@@ -148,10 +152,11 @@ class BookingCreate(BaseModel):
 class EventBookingCreate(BaseModel):
     table_ids: List[int]
     customer_name: str
-    customer_category: CustomerCategory = CustomerCategory.EVENT
+    # customer_category dihapus — hardcoded 'event' di backend
     phone: Optional[str] = None
     age: Optional[str] = None
     gender: Optional[Gender] = None
+    nat: Optional[str] = None
     pax: int
     start_time: datetime
     end_time: datetime
@@ -170,12 +175,13 @@ class BookingUpdate(BaseModel):
     cancel_reason: Optional[str] = None
     tag_ids: Optional[List[int]] = None
     
-    # Allow updating basic customer info via booking update
+    # Customer info updates
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
-    customer_category: Optional[CustomerCategory] = None
+    # customer_category dihapus dari update
     customer_age: Optional[str] = None
     customer_gender: Optional[Gender] = None
+    customer_nat: Optional[str] = None
 
 class BookingResponse(BaseModel):
     id: int
