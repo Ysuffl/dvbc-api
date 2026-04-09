@@ -119,9 +119,12 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     db_table.hold_by_customer_id = None
     db.add(db_table)
     
+    await db.flush()  # Pastikan ID ter-generate sebelum commit
+    booking_id = db_booking.id  # Simpan ID SEBELUM commit (expire)
+    
     await db.commit()
-    # Use db_booking.id after commit to ensure it's populated for new records
-    return await get_booking_by_id(db, db_booking.id)
+    # Gunakan booking_id yang sudah disimpan, bukan db_booking.id (sudah expired)
+    return await get_booking_by_id(db, booking_id)
 
 async def get_booking_by_id(db: AsyncSession, booking_id: int) -> Optional[Booking]:
     query = select(Booking).options(
