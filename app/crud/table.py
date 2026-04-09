@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy import update, delete
-from app.models.table_booking import Table, TableStatus, Booking, BookingStatus, Customer
+from app.models.table_booking import Table, TableStatus, Booking, BookingStatus, Customer, MasterTag
 from datetime import datetime, timedelta
 from app.schemas.table_booking import TableCreate, TableUpdate
 from typing import List, Optional
@@ -10,7 +10,7 @@ from typing import List, Optional
 async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 1000) -> List[Table]:
     query = select(Table).options(
         selectinload(Table.bookings).selectinload(Booking.customer),
-        selectinload(Table.bookings).selectinload(Booking.tags),
+        selectinload(Table.bookings).selectinload(Booking.tags).selectinload(MasterTag.group),
         selectinload(Table.hold_customer),
         with_loader_criteria(Booking, Booking.status.in_([
             BookingStatus.PENDING,
@@ -42,7 +42,7 @@ async def get_tables(db: AsyncSession, skip: int = 0, limit: int = 1000) -> List
 async def get_table_by_id(db: AsyncSession, table_id: int) -> Optional[Table]:
     query = select(Table).options(
         selectinload(Table.bookings).selectinload(Booking.customer),
-        selectinload(Table.bookings).selectinload(Booking.tags),
+        selectinload(Table.bookings).selectinload(Booking.tags).selectinload(MasterTag.group),
         selectinload(Table.hold_customer),
         with_loader_criteria(Booking, Booking.status.in_([
             BookingStatus.PENDING,

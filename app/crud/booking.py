@@ -12,7 +12,10 @@ def get_now():
     return datetime.utcnow() + timedelta(hours=7)
 
 async def get_bookings(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Booking]:
-    query = select(Booking).options(selectinload(Booking.tags)).offset(skip).limit(limit)
+    query = select(Booking).options(
+        selectinload(Booking.tags).selectinload(MasterTag.group),
+        selectinload(Booking.customer)
+    ).offset(skip).limit(limit)
     result = await db.execute(query)
     return result.unique().scalars().all()
 
@@ -122,7 +125,7 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
 
 async def get_booking_by_id(db: AsyncSession, booking_id: int) -> Optional[Booking]:
     query = select(Booking).options(
-        selectinload(Booking.tags),
+        selectinload(Booking.tags).selectinload(MasterTag.group),
         selectinload(Booking.customer)
     ).where(Booking.id == booking_id)
     result = await db.execute(query)
@@ -344,7 +347,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
     
     stmt = select(Booking).options(
         selectinload(Booking.customer),
-        selectinload(Booking.tags)
+        selectinload(Booking.tags).selectinload(MasterTag.group)
     ).where(Booking.id.in_(booking_ids))
     result = await db.execute(stmt)
     return list(result.unique().scalars().all())
