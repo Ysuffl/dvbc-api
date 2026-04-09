@@ -41,9 +41,12 @@ async def list_tags(db: AsyncSession = Depends(get_db)):
 
 @router.post("/", response_model=BookingResponse)
 async def create_new_booking(booking_in: BookingCreate, db: AsyncSession = Depends(get_db)):
-    db_booking = await create_booking(db, booking_in)
-    if not db_booking:
-        raise HTTPException(status_code=404, detail="Table not found")
+    try:
+        db_booking = await create_booking(db, booking_in)
+        if not db_booking:
+            raise HTTPException(status_code=404, detail="Table not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     # Notify all clients about table status change
     db_table = await get_table_by_id(db, db_booking.table_id)

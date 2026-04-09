@@ -29,14 +29,14 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     now = get_now()
     overlap_query = select(Booking).where(
         Booking.table_id == booking_in.table_id,
-        Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD]),
+        Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD, BookingStatus.COMPLETED]),
         Booking.start_time < booking_in.end_time,
         Booking.end_time > booking_in.start_time,
         Booking.end_time > now  # Ignore bookings that should have finished by now
     )
     overlap_result = await db.execute(overlap_query)
     if overlap_result.unique().scalars().first():
-        return None
+        raise ValueError("Table is already booked during this time")
 
     # Upsert Customer: find existing by name+phone or create new
     cust_query = select(Customer).where(
@@ -115,9 +115,10 @@ async def create_booking(db: AsyncSession, booking_in: BookingCreate) -> Optiona
     db_table.hold_until = None
     db_table.hold_by_customer_id = None
     db.add(db_table)
-    booking_id = db_booking.id
+    
     await db.commit()
-    return await get_booking_by_id(db, booking_id)
+    # Use db_booking.id after commit to ensure it's populated for new records
+    return await get_booking_by_id(db, db_booking.id)
 
 async def get_booking_by_id(db: AsyncSession, booking_id: int) -> Optional[Booking]:
     query = select(Booking).options(
@@ -282,7 +283,7 @@ async def create_event_bookings(db: AsyncSession, booking_in: EventBookingCreate
         # Overlap Check for each table in the event
         overlap_query = select(Booking).where(
             Booking.table_id == table_id,
-            Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD]),
+            Booking.status.notin_([BookingStatus.CANCELLED, BookingStatus.HOLD, BookingStatus.COMPLETED]),
             Booking.start_time < booking_in.end_time,
             Booking.end_time > booking_in.start_time,
             Booking.end_time > now
